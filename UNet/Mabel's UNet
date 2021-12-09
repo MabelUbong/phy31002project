@@ -1,0 +1,229 @@
+# importing pytorch packages
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# architecture of convolutional network
+
+# applying convolution twice, normalising and then ReLU (blue arrow)
+# layer of the application of convolution and rectified linear unit 
+
+#input layer
+image = torch.rand([0,1,572,572])
+
+#applying convolution twice and ReLU (blue arrow)
+#extend the nn.Module base class
+class layer1(nn.Module):
+    def __init__(self):
+        super(layer1,self).__init__()
+
+        self.conv1 =nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3)
+        self.conv2 =nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+#implementing forward function and creating max pool function
+    def forward1(self,x1):
+        x1 = x1
+        x1 = self.relu(self.conv1(x1))
+#max pooling (red arrow)
+        x1= self.relu(self.pool(self.conv2(x1)))
+        return x1   
+
+
+class layer2(nn.Module):
+    def __init__(self):
+        super(layer2,self).__init__()
+
+        self.conv3 =nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3)
+        self.conv4 =nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+
+    def forward2(self,x2):
+        x2 = x2
+        x2 = self.relu(self.conv3(x2))
+        x2 = self.relu(self.pool(self.conv4(x2)))
+        return x2
+    
+class layer3(nn.Module):
+    def __init__(self):
+        super(layer3,self).__init__()
+
+        self.conv5 =nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3)
+        self.conv6 =nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+
+    def forward3(self,x3):
+        x3 = x3
+        x3 = self.relu(self.conv5(x3))
+        x3 = self.relu(self.pool(self.conv6(x3)))
+        return x3   
+
+class layer4(nn.Module):
+    def __init__(self):
+        super(layer4,self).__init__()
+
+        self.conv7 =nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3)
+        self.conv8 =nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+
+    def forward4(self,x4):
+        x4 = x4
+        x4 = self.relu(self.conv7(x4))
+        x4 = self.relu(self.pool(self.conv8(x4)))
+        return x4  
+    
+class layer5(nn.Module):
+    def __init__(self):
+        super(layer5,self).__init__()
+
+        self.conv9 =nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3)
+        self.conv10 =nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+
+    def forward5(self,x5):
+        x5 = x5
+        x5 = self.relu(self.conv7(x5))
+        x5 = self.relu(self.pool(self.conv8(x5)))
+        return x5
+
+class layer6(nn.Module):
+    def __init__(self):
+        super(layer6,self).__init__()
+
+        self.conv11 =nn.Conv2d(in_channels=512, out_channels=1024, kernel_size=3)
+        self.conv12 =nn.Conv2d(in_channels=1024, out_channels=1024, kernel_size=3)
+        
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2,2)
+        
+
+    def forward5(self,x6):
+        x6 = x6
+        x6 = self.relu(self.conv7(x6))
+        x6 = self.relu(self.pool(self.conv8(x6)))
+        return x6
+
+
+# UNet parts
+
+
+class conv_ReLU(nn.Module):  #extend the nn.Module base class
+    
+    def __init__(self,in_channels, out_channels,mid_channels=None):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+                 nn.Conv2d(in_channels, out_channels, kernel_size=3),
+                 nn.BatchNorm2d(mid_channels),
+                 nn.ReLU(inplace=True),
+                 nn.Conv2d(mid_channels, out_channels, kernel_size=3),
+                 nn.BatchNorm2d(out_channels),
+                 nn.ReLU(inplace=True)
+            
+            )
+    
+    def forward(self,x):
+        return self.conv_ReLU(x)
+            
+# maxpooling for downsampling (red arrow)
+
+# Going Down
+
+class Down(nn.Module):
+    
+    def __init__ (self,in_channels, out_channels):
+        super().__init()
+        self.max_pool_2x2 = nn.Sequential(
+            nn.MaxPool(kernel_size=2, stride=2),
+            conv_ReLU(in_channels,out_channels)
+            )
+    
+    def forward(self,x):
+        return self.max_pool_2x2(x)
+    
+# Going Up 
+    
+class Up(nn.Module):
+    
+    def __init__(self,in_channels, out_channels, bilinear=True):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(in_channels,in_channels // 2, kernel_size=2, stride=2)
+        self.conv = conv_ReLU(in_channels,out_channels)
+        
+        
+    def forward(self, r1, r2):
+        r1 = self.up(r1)
+        diffR1 = r2.size()[2] - r1.size()[2]
+        diffR2 = r2.size()[3] - r1.size()[3]
+        
+        
+        r1 = F.pad(r1, [-diffR1 // 2, -diffR1 + diffR1 //2,
+                        -diffR2 // 2, -diffR2 + diffR2 //2])
+        
+        x = torch.cat([r2,r1], dim=1)
+        
+        return self.conv(x)
+
+
+# Getting out
+
+class OutConv(nn.Module):
+    
+     def __init__(self,in_channels, out_channels):
+         super(OutConv,self).__init__()
+         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+         
+     def forward(self,x):
+         return self.conv(x)
+    
+
+
+#UNet Model
+
+class UNet(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear=True):
+        super(UNet,self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+        
+        
+        self.inc = conv_ReLU(n_channels, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 256)
+        self.down3 = Down(256, 512)
+        factor = 2 if bilinear else 1
+        self.down4 = Down(512, 1024 // factor)
+        self.up1 = Up(1024, 512 // factor, bilinear)
+        self.up2 = Up(512, 256 // factor, bilinear)
+        self.up3 = Up(256, 128 // factor, bilinear)
+        self.up4 = Up(128, 64, bilinear)
+        self.outc = OutConv(64, n_classes)
+        
+    def forward(self, x):  
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x)
+        return logits
