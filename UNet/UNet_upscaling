@@ -1,0 +1,208 @@
+#Sam's Code
+
+#My attempt at converting the data loader into a class
+import math
+import torch
+import numpy as np
+import torch.nn as nn
+from PIL import Image
+import os
+import random
+import tensorflow as tf
+import torch.nn.functional as F
+import tifffile
+
+
+class DL(nn.Module):
+  def __init__(self,dname1, dname2):
+    self.dir1 = dname1
+    self.dir2 = dname2
+
+  #I'm going to put the loadtiffs function in here
+  @classmethod
+  def loadtiffs(cls, img):
+    imgArray = np.zeros((img.size[1], img.size[0], img.n_frames), np.uint16)
+    for I in range(img.n_frames):
+      img.seek(I)
+      imgArray[:, :, I] = np.asarray(img)
+    img.close()
+    return(imgArray)
+
+  @classmethod
+  def Load(cls, dname, n):
+    img_array = []
+
+    for fname in os.listdir(dname):
+        im = Image.open(os.path.join(dname, fname)) # finds all the tiff files in the specific directory
+        img_array.append(im)
+
+
+  #removes unwanted data
+    if dname == '/content/drive/Shareddrives/Team Net/Training Data/Conf_Train':
+        img_array.pop(19)
+        img_array.pop(19)
+        img_array.pop(19)
+        img_array.pop(19)
+        img_array.pop(30)
+        img_array.pop(30)
+        img_array.pop(30)
+
+# Now to randomise the array
+# Create an list from 1 to n
+    indexes = []
+    for i in range(0, len(img_array)):
+        indexes.append(i)
+
+#create a random list from the indexes
+    rand_indexes = random.sample(indexes, len(indexes))
+
+#randomising images using the random indexes
+    img_rand_array = []
+
+    for i in range(len(img_array)):
+      m = rand_indexes[i]
+      img_rand_array.append(img_array[m])
+         
+#the PIL images are ran through the loadtiffs function
+    array = []
+    for i in range(len(img_rand_array)):
+       data = cls.loadtiffs(img_rand_array[i]) 
+       array.append(data)
+
+#moves the axis to fit a tensor shape
+    Array = np.asarray(array)
+    Array = np.moveaxis(Array, -1,1)
+
+# inputting batch 
+    Batch = []
+    for i in range(0,n):
+      Batch.append(Array[i])
+    Batch = np.asarray(Batch)
+    return Batch
+
+#Call an instance of the class
+#As the @classmethod has been used the function within the class 'Load' can be called
+#Ive got it in a class with no errors but it wont let me call th function
+
+dname1 = '/content/drive/Shareddrives/Team Net/Training Data/Conf_Train'
+dname2 = '/content/drive/Shareddrives/Team Net/Training Data/ISM_Train'
+
+Class1 = DL.Load(dname1, 1)
+Class2 = DL.Load(dname2, 2)
+
+#Looking promising just need to work out th kinks
+#I'm not sure why we need to input a variable for loadtiffs when it gets called inside 'Load' and thats where the variable is defined
+print(Class1.shape)
+print(Class2.shape)
+
+#It works!!!
+#Dconv codes the first step of the UNet where 2 convolutions occur, this takes 2 arguments, in_channels and out_channels depending on what output you would like from the convolutions
+class Across(nn.Module):
+    def __init__(self, in_channels, out_channels, mid_channels):
+        super().__init__()
+        self.d_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3)
+            ,nn.BatchNorm2d(mid_channels)
+            ,nn.ReLU(mid_channels)
+            ,nn.Conv2d(mid_channels, out_channels, kernel_size=3)
+            ,nn.BatchNorm2d(out_channels)
+            ,nn.ReLU(out_channels))
+    def forward(self,t):
+        t = self.d_conv(t)
+        return(t)
+#Down class Codes the downwards step and include the double convolution as described in 'Dconv'
+class Down(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2)
+    def forward(self,t):
+        t = self.max_pool(t)
+        
+        return(t)
+
+class Up(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        #self.up = nn.Upsample(scale_factor=2,mode='bilinear', align_corners=True)
+        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2,)
+    def forward(self,t1,t2):
+        t1 = self.up(t1)
+        diffY = t2.size()[2] - t1.size()[2]
+        diffX = t2.size()[3] - t1.size()[3]
+
+        t2 = F.pad(t2,[-diffX,0,-diffY,0])
+        t = torch.cat([t2,t1], dim=1)
+        
+        return(t)
+
+class Final_Up(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        #self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=3, padding=1, output_padding=2, dilation=2)
+        self.up = nn.Upsample(size=(1200,1200), mode='bilinear', align_corners=True)
+    def forward(self,t):
+      return self.up(t)
+
+class Out(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Out,self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+    def forward(self,t):
+        t = self.conv(t)
+        return(t)
+
+class Neural_Network(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear = True):
+        super().__init__()
+
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.start = Across(n_channels,64,64)
+        self.Down1 = Down()
+        self.Across1 = Across(64,128,128)
+        self.Down2 = Down()
+        self.Across2 = Across(128,256,256)
+        self.Down3 = Down()
+        self.Across3 = Across(256,512,512)
+        self.Down4 = Down()
+        self.Across4 = Across(512,1024,1024)
+        self.Up1 = Up(1024,512)
+        self.Across5 = Across(1024,512,512)
+        self.Up2 = Up(512,256)
+        self.Across6 = Across(512,256,256)
+        self.Up3 = Up(256,128)
+        self.Across7 = Across(256,128,128)
+        self.Up4 = Up(128,64)
+        self.Across8 = Across(128,64,64)
+        self.end = Out(64,n_classes)
+        self.Final_Up = Final_Up(n_classes, n_classes)
+    def forward(self,t):
+
+        t1 = self.start(t) #This is the first tensor to be saved
+        t2 = self.Across1(self.Down1(t1)) #Second tensor
+        t3 = self.Across2(self.Down2(t2)) #3
+        t4 = self.Across3(self.Down3(t3))#4
+        t5 = self.Across4(self.Down4(t4))
+        t6 = self.Up1(t5,t4)
+        t = self.Across5(t6)
+        t = self.Up2(t, t3)
+        t = self.Across6(t)
+        t = self.Up3(t, t2)
+        t = self.Across7(t)
+        t = self.Up4(t, t1)
+        t = self.Across8(t)
+        t = self.end(t)
+        t = self.Final_Up(t)
+        return(t)
+
+Class1 = Class1.astype(np.float32)
+Class1_Tensor = torch.tensor(Class1, dtype=torch.float32)
+
+NN = Neural_Network(1,1)
+print(NN(Class1_Tensor).shape)
+
+print(Class1_Tensor.__class__)
+
+tifffile.imsave('image.tiff', Class1)
